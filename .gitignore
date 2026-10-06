@@ -39,3 +39,14 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local native module build outputs
+modules/*/android/build/
+modules/*/android/.cxx/
+modules/*/ios/build/
+
+# Gradle caches (e.g. created by the VS Code "Gradle for Java" extension syncing the module)
+.gradle/
+
+# VS Code React Native Tools workspace data
+.vscode/.react/
