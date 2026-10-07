@@ -21,6 +21,9 @@ npm start              # Metro only, for JS changes on an already-installed dev 
 npx tsc --noEmit
 npm run lint           # expo lint src modules (ESLint + Prettier via eslint-plugin-prettier); add `-- --fix` to autofix
 npx expo-doctor
+# Standalone APK (no Metro), debug-signed: android/app/build/outputs/apk/release/app-release.apk
+# arm64-v8a only: building all four ABIs runs the C++ compiler out of memory on this machine
+cd android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
 ```
 
 There is no test suite. Verification is done by building and running on a physical Android phone (sensor behavior can't be checked in an emulator).
@@ -29,7 +32,7 @@ There is no test suite. Verification is done by building and running on a physic
 
 - **All recording happens in native code.** JS only sends commands (start / stop / getStatus) and receives a status event about once per second. Raw sensor samples never cross the bridge.
 - **Local Expo module `modules/sensor-recorder`** (autolinked via `expo-module.config.json`, module name `SensorRecorder`, Kotlin package `com.limedevelopment.motiontrace.sensorrecorder`). JS entry is `modules/sensor-recorder/index.ts` (API: `start(mode)`, `stop()`, `getStatus()`, event `onStatus`). The Swift side is a stub with the same API, for the future only.
-- **Recording classes must stay Expo-independent**: everything in the Kotlin package except `SensorRecorderModule.kt` (a thin wrapper) and `SensorRecorderExceptions.kt` (`CodedException`s for JS) — `SensorRecorder`, `CsvWriter`, `MetadataWriter`, `RecordingMode`, `RecorderStatus`, `SampleStats`, `ClockPair`, and the planned `RecorderService`. One class/enum per file. This lets the classes move unchanged into a fully native app if the client chooses that.
+- **Recording classes must stay Expo-independent**: everything in the Kotlin package except `SensorRecorderModule.kt` (a thin wrapper) and `SensorRecorderExceptions.kt` (`CodedException`s for JS) — `SensorRecorder`, `CsvWriter`, `MetadataWriter`, `RecordingMode`, `RecorderStatus`, `SampleStats`, `ClockPair`, `RecordingStore`, `RecordingInfo`, `RecordingSharing`, `RecordingFileProvider`, and the planned `RecorderService`. One class/enum per file. This lets the classes move unchanged into a fully native app if the client chooses that.
 - Use only platform SDK sensor APIs (`SensorManager`) — no third-party sensor libraries.
 - Android permissions (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_HEALTH`, `HIGH_SAMPLING_RATE_SENSORS`, `WAKE_LOCK`, `POST_NOTIFICATIONS`) and the future foreground service are declared in the **module's** `android/src/main/AndroidManifest.xml`, which merges into the app manifest at build time. Foreground service type is `health`.
 - Single screen. Routes in `src/app/` only re-export screens (`src/app/index.tsx` → `src/features/recorder/screens/RecorderScreen.tsx`); each screen keeps its state in a sibling hook (`useRecorderScreen.ts`). Aliases: `@/*` → `src/*`, `@modules/*` → `modules/*`.

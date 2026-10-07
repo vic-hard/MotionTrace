@@ -6,4 +6,17 @@
   <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <application>
+    <!-- Authority must match RecordingFileProvider.authority(). -->
+    <provider
+      android:name="com.limedevelopment.motiontrace.sensorrecorder.RecordingFileProvider"
+      android:authorities="${applicationId}.sensorrecorder.fileprovider"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/sensor_recorder_file_paths" />
+    </provider>
+  </application>
 </manifest>
