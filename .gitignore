@@ -45,6 +45,11 @@ modules/*/android/build/
 modules/*/android/.cxx/
 modules/*/ios/build/
 
+# Android Studio project files, created when a module's android/ folder is opened on its own
+# (open the generated root android/ instead)
+modules/*/android/.idea/
+modules/*/android/local.properties
+
 # Gradle caches (e.g. created by the VS Code "Gradle for Java" extension syncing the module)
 .gradle/
 

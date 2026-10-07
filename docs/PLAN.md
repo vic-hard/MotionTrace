@@ -24,8 +24,8 @@
 |---|---|---|---|---|
 | 1 | Подготовка окружения | M1 | 1 | ✅ Готово |
 | 2 | Каркас проекта | M1 | 2–3 | ✅ Готово |
-| 3 | Нативная запись датчика | M1 | 4–7 | ⏳ Следующий |
-| 4 | Фоновая работа | M2 | 4–7 | |
+| 3 | Нативная запись датчика | M1 | 4–7 | ✅ Готово |
+| 4 | Фоновая работа | M2 | 4–7 | ⏳ Следующий |
 | 5 | Минимальный интерфейс | M1 | 2 | |
 | 6 | Скрипт анализа | M3 | 4–7 | |
 | 7 | Отладка на устройствах | M2 | 4–8 | |
@@ -44,37 +44,61 @@
 ## Что сделано в этапе 2
 
 - Expo-проект (SDK 57, TypeScript), dev client, Expo Router (`src/app/_layout.tsx`, `src/app/index.tsx`).
-- Локальный модуль `modules/sensor-recorder` (Android + iOS), пока с примерами из шаблона (`hello`, `setValueAsync`, `onChange`).
+- Локальный модуль `modules/sensor-recorder` (Android + iOS).
 - Разрешения объявлены в **манифесте модуля** (`modules/sensor-recorder/android/src/main/AndroidManifest.xml`) и вливаются в манифест приложения при сборке: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_HEALTH`, `HIGH_SAMPLING_RATE_SENSORS`, `WAKE_LOCK`, `POST_NOTIFICATIONS`.
 - Версии `react-native-gesture-handler` (2.32) и `react-dom` (19.2.3) закреплены под SDK 57. Без этого npm ставил gesture-handler 3.x, сборка падала на лимите путей Windows (260 символов), а `react-dom` конфликтовал с `react`.
 - Проверено: сборка, запуск на телефоне, `tsc`, `expo-doctor`.
 
-## Детали следующих этапов
+## Что сделано в этапе 3
 
-### Этап 3. Нативная запись датчика
+Код — в `modules/sensor-recorder/android/src/main/java/com/limedevelopment/motiontrace/sensorrecorder/`, по одному классу на файл. От Expo зависят только `SensorRecorderModule.kt` и `SensorRecorderExceptions.kt`, остальное переносится в нативное приложение без изменений.
 
-- `SensorRecorder.kt`: подписка на `Sensor.TYPE_GRAVITY` на собственном `HandlerThread`.
-  - Режим «100 Гц»: период 10 000 мкс.
-  - Режим «максимум»: `SENSOR_DELAY_FASTEST` (выше 200 Гц возможно благодаря `HIGH_SAMPLING_RATE_SENSORS`).
-  - `maxReportLatencyUs = 0` (без пакетной доставки).
-- `CsvWriter.kt`: буферизованная запись, периодический flush.
+- `SensorRecorder.kt`: подписка на `Sensor.TYPE_GRAVITY` на собственном `HandlerThread` (приоритет `URGENT_DISPLAY`); `Handler` этого потока передаётся в `registerListener`, поэтому `onSensorChanged` вызывается на нём.
+  - `start()` состоит из шагов `findSensor` → `openFiles` → `startThread` → `subscribe` → `scheduleTicks`; при ошибке `abortStart` откатывает сделанное. `subscribe` — последний шаг, который может упасть: после него события уже пишутся в CSV, и откат с чужого потока недопустим.
+  - Один объект = одна запись (`start()` → `stop()`). Приём событий, запись CSV и тик раз в секунду (flush + статус) идут в одной очереди одного потока, поэтому блокировок на запись нет.
+  - `stop()` отписывается от датчика, дописывает уже пришедшие события, закрывает файлы и ждёт этого не дольше 2 с.
+  - Ошибка записи на диск останавливает запись; текст ошибки попадает в статус и метаданные.
+- `RecordingMode.kt`: режим `100hz` — период 10 000 мкс; `max` — `SENSOR_DELAY_FASTEST` (выше 200 Гц возможно благодаря `HIGH_SAMPLING_RATE_SENSORS`). `maxReportLatencyUs = 0` (без пакетной доставки).
+- `SampleStats.kt`: счётчики по записанным строкам (число, первая/последняя метка, максимальный интервал, средняя частота). Неизменяемый снапшот в `@Volatile`-поле: пишет только поток рекордера, читатели всегда видят согласованные значения. Поля жизненного цикла (`state`, `error`, время старта/стопа) пишут два потока, поэтому они отдельно, переходы — через `@Synchronized`.
+- `RecorderStatus.kt`: статус для UI и метаданных. `ClockPair.kt`: пара часов `elapsedRealtimeNanos` ↔ `currentTimeMillis` (чтение UTC между двумя чтениями монотонных часов, берётся середина) и смещение для пересчёта в UTC.
+- `CsvWriter.kt`: `BufferedWriter` с буфером 64 КБ, flush раз в секунду (данные переживают падение приложения), `fsync` при закрытии.
+- `MetadataWriter.kt`: JSON на старте (`writeStart`) и с результатами на стопе (`writeStop`), через временный файл и переименование.
+- **Файлы:** `<external files dir>/recordings/gravity_<yyyy-MM-dd_HH-mm-ss>_<режим>.csv` и `.json` с тем же именем. Папка приложения, разрешения не нужны, забрать файлы: `adb pull /sdcard/Android/data/com.limedevelopment.motiontrace/files/recordings`.
 - **Формат CSV:**
   ```
   sensor_timestamp_ns,time_utc_ns,seconds_elapsed,x,y,z
   ```
   - `sensor_timestamp_ns` — исходный `SensorEvent.timestamp` (монотонное время от включения, `elapsedRealtimeNanos`), **хранится всегда без пересчёта**;
-  - `time_utc_ns` — пересчёт по смещению, зафиксированному на старте записи;
-  - `seconds_elapsed` — от первого измерения записи.
-- **Метаданные записи (JSON рядом с CSV):**
-  - информация о датчике: `name`, `vendor`, `version`, `minDelay`, `maxDelay`, `fifoMaxEventCount`, `resolution`, `maximumRange`, `isWakeUpSensor`;
-  - устройство: производитель, модель, версия Android;
-  - режим и запрошенный период;
-  - пара `elapsedRealtimeNanos` ↔ `currentTimeMillis` на момент старта.
-- Команды модуля:
-  - `AsyncFunction("start")` / `AsyncFunction("stop")` — только запуск и остановка, сразу возвращаются;
-  - `Function("getStatus")` — готовые счётчики: длительность, число измерений, фактическая частота;
-  - событие статуса раз в секунду через `sendEvent`.
+  - `time_utc_ns` — `sensor_timestamp_ns` + смещение, зафиксированное на старте записи;
+  - `seconds_elapsed` — от первого измерения записи, десятичная дробь с 9 знаками (точно, без экспоненты);
+  - `x,y,z` — `float` в кратчайшей точной записи (`Float.toString`, возможна экспонента вида `1.2E-4`).
+- **Метаданные (JSON рядом с CSV)** пишутся на старте и перезаписываются на стопе (через временный файл и переименование):
+  - `device`: производитель, бренд, модель, версия Android и SDK;
+  - `sensor`: `name`, `vendor`, `version`, `minDelayUs`, `maxDelayUs`, `fifoMaxEventCount`, `fifoReservedEventCount`, `resolution`, `maximumRange`, `powerMa`, `isWakeUpSensor`;
+  - `recording`: режим, запрошенный период, `maxReportLatencyUs`;
+  - `clockAtStart` / `clockAtStop`: пара `elapsedRealtimeNanos` ↔ `currentTimeMillis` и смещение (по паре на стопе видно расхождение часов за запись);
+  - `result` (только после стопа): число измерений, первая/последняя метка, длительность, средняя частота, максимальный интервал, ошибка. **Нет `result` — запись оборвалась.**
+- Команды модуля (`SensorRecorderModule.kt`, тонкая обёртка):
+  - `start(mode: '100hz' | 'max')` / `stop()` — `AsyncFunction`, возвращают статус (после `await stop()` файлы уже закрыты);
+  - `getStatus()` — `Function`: `isRecording`, `mode`, `csvPath`, `durationSec`, `sampleCount`, `rateHz` (средняя по меткам датчика), `maxIntervalMs`, `error`;
+  - событие `onStatus` — на старте, раз в секунду и после остановки;
+  - ошибки команд: `ERR_INVALID_MODE`, `ERR_ALREADY_RECORDING` (`SensorRecorderExceptions.kt`);
+  - рекордер запоминается до `start()`: `stop()` достанет его при любом исходе старта, а ошибка неудачного старта видна в `getStatus()`;
+  - при перезагрузке JS (`OnDestroy`) запись останавливается и закрывается корректно; новый экземпляр модуля о ней не знает и показывает пустой статус.
+- iOS: заглушка с тем же API (`start` выдаёт ошибку `ERR_NOT_SUPPORTED`).
+- JS: публичный вход модуля — `modules/sensor-recorder/index.ts`, импорт через алиас `@modules/sensor-recorder`. Экран — `src/features/recorder/screens/RecorderScreen.tsx` (временные кнопки «Start 100 Hz / Start max / Stop» и статус; полноценный экран — этап 5), состояние — в `useRecorderScreen.ts`, маршрут `src/app/index.tsx` только реэкспортирует экран.
 - В M1 рекордер управляется модулем напрямую. На этапе 4 управление переезжает в foreground service.
+- Линтер: ESLint (`eslint-config-expo`) + Prettier; `npm run lint` проверяет `src` и `modules`. `.gitattributes` фиксирует LF, иначе Prettier ругается на CRLF под Windows.
+- Проверено: `tsc`, `npm run lint`, сборка и запись на Samsung Galaxy A52 (SM-A525F, Android 14, датчик `gravity Non-wakeup` от Qualcomm), экран включён:
+  - `100hz`: фактически **105,03 Гц** (интервал 9,521 мс), `max`: **210,06 Гц** (4,761 мс), хотя `minDelay` = 5000 мкс. Датчиковый процессор работает на фиксированных частотах и берёт ближайшую не ниже запрошенной — учесть при сравнении с Sensor Logger;
+  - разброс интервалов ~0,05 мкс: метки ставит датчиковый процессор, а не момент доставки, поэтому пропуск виден как выпавшее измерение, а не как неровный интервал;
+  - пропусков и немонотонных меток нет; `time_utc_ns` и `seconds_elapsed` сходятся с меткой; первое измерение через ~60 мс после старта, последнее — за 9–18 мс до стопа;
+  - экран после Stop совпадает с `result` в JSON;
+  - после `am force-stop` CSV обрывается на целой строке, данные есть до последнего ежесекундного flush (потеря < 1 с), в JSON нет `result`;
+  - после перезагрузки JS во время записи у записи есть `result` без ошибки.
+  - Повторный прогон после рефакторинга по код-ревью (7 октября): все пункты выше подтвердились, формат JSON не изменился.
+
+## Детали следующих этапов
 
 ### Этап 4. Фоновая работа
 
@@ -82,10 +106,11 @@
 - Объявление сервиса — в манифесте модуля.
 - Запрос `POST_NOTIFICATIONS` (Android 13+).
 - Корректная остановка, flush данных при остановке и сбоях.
+- По необходимости — счётчик разрывов `gapCount` в `SampleStats`: число интервалов больше 2× от типичного, на экране и в `result` JSON. Android не сообщает о потерянных событиях, пропуск виден только по меткам (они на ровной сетке, выпавшее измерение даёт двойной интервал). При записи с выключенным экраном удобно сразу видеть число разрывов, а не только самый длинный (`maxIntervalMs`). Пока экран включён и пропусков нет, это лишнее.
 
 ### Этап 5. Минимальный интерфейс
 
-Экран `src/app/index.tsx`: выбор режима, «Старт/Стоп», статус (длительность, число измерений, фактическая частота), список файлов и отправка с телефона.
+Экран `src/features/recorder/screens/RecorderScreen.tsx` (состояние — в `useRecorderScreen.ts`, маршрут `src/app/index.tsx` только реэкспортирует экран): выбор режима, «Старт/Стоп», статус (длительность, число измерений, фактическая частота), список файлов и отправка с телефона.
 
 ### Этап 6. Скрипт анализа (Python)
 

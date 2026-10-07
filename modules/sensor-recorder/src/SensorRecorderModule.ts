@@ -1,10 +1,15 @@
-import { NativeModule, requireNativeModule } from 'expo';
+import { NativeModule, requireNativeModule } from "expo";
 
-import { SensorRecorderModuleEvents } from './SensorRecorder.types';
+import {
+  RecorderStatus,
+  RecordingMode,
+  SensorRecorderModuleEvents,
+} from "./SensorRecorder.types";
 
 declare class SensorRecorderModule extends NativeModule<SensorRecorderModuleEvents> {
-  hello(): string;
-  setValueAsync(value: string): Promise<void>;
+  start(mode: RecordingMode): Promise<RecorderStatus>;
+  stop(): Promise<RecorderStatus>;
+  getStatus(): RecorderStatus;
 }
 
-export default requireNativeModule<SensorRecorderModule>('SensorRecorder');
+export default requireNativeModule<SensorRecorderModule>("SensorRecorder");
