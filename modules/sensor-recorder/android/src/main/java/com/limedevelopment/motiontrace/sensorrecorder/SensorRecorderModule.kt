@@ -9,10 +9,9 @@ import java.io.File
 
 private const val STATUS_EVENT = "onStatus"
 
-/** Thin Expo wrapper: logic lives in [SensorRecorder] and [RecordingStore]. */
+/** Thin Expo wrapper: logic lives in [RecorderService] and [RecordingStore]. */
 class SensorRecorderModule : Module() {
-  // start/stop run on the shared AsyncFunction thread, getStatus on the JS thread.
-  @Volatile private var recorder: SensorRecorder? = null
+  private val statusListener: (RecorderStatus) -> Unit = { sendEvent(STATUS_EVENT, it.toMap()) }
 
   private val context: Context
     get() = appContext.reactContext?.applicationContext ?: throw Exceptions.ReactContextLost()
@@ -25,25 +24,28 @@ class SensorRecorderModule : Module() {
 
     Events(STATUS_EVENT)
 
+    // The recording lives in RecorderService and survives JS reloads: a new module instance
+    // just picks up its status.
+    OnCreate {
+      RecorderService.addStatusListener(statusListener)
+    }
+
+    OnDestroy {
+      RecorderService.removeStatusListener(statusListener)
+    }
+
     AsyncFunction("start") { mode: String ->
       val recordingMode = RecordingMode.fromId(mode) ?: throw InvalidModeException(mode)
-      if (recorder?.isRecording == true) throw AlreadyRecordingException()
-      val newRecorder = SensorRecorder(context, recordingMode, store.dir) {
-        sendEvent(STATUS_EVENT, it.toMap())
-      }
-      // Keep it before start(): stop() must reach it whatever start() throws, and a failed
-      // start leaves its error in getStatus().
-      recorder = newRecorder
-      newRecorder.start()
-      newRecorder.status().toMap()
+      if (RecorderService.isRecording) throw AlreadyRecordingException()
+      RecorderService.start(context, recordingMode).toMap()
     }
 
     AsyncFunction("stop") {
-      (recorder?.stop() ?: RecorderStatus.IDLE).toMap()
+      RecorderService.stop().toMap()
     }
 
     Function("getStatus") {
-      (recorder?.status() ?: RecorderStatus.IDLE).toMap()
+      RecorderService.status().toMap()
     }
 
     // The recording in progress is left out: it is still being written.
@@ -61,14 +63,10 @@ class SensorRecorderModule : Module() {
       if (activeRecordingId() in ids) throw RecordingInProgressException()
       ids.forEach { store.delete(it) }
     }
-
-    OnDestroy {
-      recorder?.stop()
-    }
   }
 
   private fun activeRecordingId(): String? =
-    recorder?.status()?.takeIf { it.isRecording }?.csvPath?.let { File(it).nameWithoutExtension }
+    RecorderService.status().takeIf { it.isRecording }?.csvPath?.let { File(it).nameWithoutExtension }
 
   private fun RecorderStatus.toMap(): Map<String, Any?> = mapOf(
     "isRecording" to isRecording,
@@ -78,6 +76,7 @@ class SensorRecorderModule : Module() {
     "sampleCount" to sampleCount,
     "rateHz" to rateHz,
     "maxIntervalMs" to maxIntervalMs,
+    "gapCount" to gapCount,
     "error" to error,
   )
 

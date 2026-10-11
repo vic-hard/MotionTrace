@@ -1,4 +1,3 @@
-import { useKeepAwake } from "expo-keep-awake";
 import {
   Alert,
   FlatList,
@@ -17,12 +16,6 @@ import { useRecorderScreen } from "./useRecorderScreen";
 
 const MODES: RecordingMode[] = ["100hz", "max"];
 const CONTENT_PADDING = 16;
-
-// Rendered only while recording: in M1 recording needs the screen on.
-function KeepAwake() {
-  useKeepAwake();
-  return null;
-}
 
 export default function RecorderScreen() {
   const {
@@ -92,6 +85,7 @@ export default function RecorderScreen() {
           label="Max interval"
           value={`${status.maxIntervalMs.toFixed(1)} ms`}
         />
+        <Stat label="Gaps" value={String(status.gapCount)} />
       </View>
 
       {error && <Text style={styles.error}>{error}</Text>}
@@ -101,28 +95,25 @@ export default function RecorderScreen() {
   );
 
   return (
-    <>
-      {recording && <KeepAwake />}
-      <FlatList
-        style={styles.screen}
-        // Edge-to-edge: keep the last row clear of the system navigation bar.
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: CONTENT_PADDING + insets.bottom },
-        ]}
-        data={recordings}
-        keyExtractor={(r) => r.id}
-        ListHeaderComponent={header}
-        ListEmptyComponent={<Text style={styles.empty}>No recordings yet</Text>}
-        renderItem={({ item }) => (
-          <RecordingRow
-            recording={item}
-            onShare={() => share(item.id)}
-            onDelete={() => confirmDelete(item.id)}
-          />
-        )}
-      />
-    </>
+    <FlatList
+      style={styles.screen}
+      // Edge-to-edge: keep the last row clear of the system navigation bar.
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: CONTENT_PADDING + insets.bottom },
+      ]}
+      data={recordings}
+      keyExtractor={(r) => r.id}
+      ListHeaderComponent={header}
+      ListEmptyComponent={<Text style={styles.empty}>No recordings yet</Text>}
+      renderItem={({ item }) => (
+        <RecordingRow
+          recording={item}
+          onShare={() => share(item.id)}
+          onDelete={() => confirmDelete(item.id)}
+        />
+      )}
+    />
   );
 }
 

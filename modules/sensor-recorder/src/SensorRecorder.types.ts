@@ -11,6 +11,8 @@ export type RecorderStatus = {
   rateHz: number;
   /** Largest interval between consecutive samples. */
   maxIntervalMs: number;
+  /** Intervals over twice the average: dropped samples. */
+  gapCount: number;
   error: string | null;
 };
 

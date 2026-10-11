@@ -11,9 +11,11 @@ data class RecorderStatus(
   val rateHz: Double,
   /** Largest interval between consecutive samples. */
   val maxIntervalMs: Double,
+  /** Intervals over twice the average: dropped samples. */
+  val gapCount: Long,
   val error: String?,
 ) {
   companion object {
-    val IDLE = RecorderStatus(false, null, null, 0.0, 0, 0.0, 0.0, null)
+    val IDLE = RecorderStatus(false, null, null, 0.0, 0, 0.0, 0.0, 0, null)
   }
 }

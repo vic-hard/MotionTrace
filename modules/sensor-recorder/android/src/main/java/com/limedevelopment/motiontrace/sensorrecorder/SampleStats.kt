@@ -11,6 +11,11 @@ internal data class SampleStats(
   val lastTimestampNs: Long = 0,
   /** Largest interval between consecutive samples. */
   val maxIntervalNs: Long = 0,
+  /**
+   * Intervals longer than twice the average interval before them. Timestamps sit on a regular
+   * grid, so a dropped sample shows up as a double interval: Android never reports lost events.
+   */
+  val gapCount: Long = 0,
 ) {
   /** Average rate, from sensor timestamps. */
   val rateHz: Double
@@ -21,13 +26,17 @@ internal data class SampleStats(
 
   fun plus(timestampNs: Long): SampleStats =
     if (count == 0L) {
-      SampleStats(1, timestampNs, timestampNs, 0)
+      SampleStats(1, timestampNs, timestampNs)
     } else {
+      val intervalNs = timestampNs - lastTimestampNs
+      // No average yet for the first interval.
+      val isGap = count > 1 && intervalNs > 2.0 * (lastTimestampNs - firstTimestampNs) / (count - 1)
       SampleStats(
         count = count + 1,
         firstTimestampNs = firstTimestampNs,
         lastTimestampNs = timestampNs,
-        maxIntervalNs = maxOf(maxIntervalNs, timestampNs - lastTimestampNs),
+        maxIntervalNs = maxOf(maxIntervalNs, intervalNs),
+        gapCount = if (isGap) gapCount + 1 else gapCount,
       )
     }
 }

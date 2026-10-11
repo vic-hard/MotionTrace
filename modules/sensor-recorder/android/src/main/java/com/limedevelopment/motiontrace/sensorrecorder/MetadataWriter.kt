@@ -29,6 +29,7 @@ internal class MetadataWriter(
         .put("durationSec", status.durationSec)
         .put("rateHz", status.rateHz)
         .put("maxIntervalMs", status.maxIntervalMs)
+        .put("gapCount", status.gapCount)
         .put("error", status.error ?: JSONObject.NULL))
   )
 

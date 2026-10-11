@@ -28,6 +28,7 @@ public class SensorRecorderModule: Module {
     "sampleCount": 0,
     "rateHz": 0,
     "maxIntervalMs": 0,
+    "gapCount": 0,
     "error": nil,
   ]
 }

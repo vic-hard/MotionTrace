@@ -19,8 +19,8 @@ import java.util.Locale
  * Records `TYPE_GRAVITY` into `<name>.csv` plus `<name>.json` metadata in [outputDir].
  *
  * One instance is one recording: [start] once, [stop] once. Sensor events, CSV writes and the
- * once-per-second flush/status tick all run on a private [HandlerThread]. No Expo dependencies,
- * so the class can be driven by the Expo module now and by a foreground service later.
+ * once-per-second flush/status tick all run on a private [HandlerThread]. Driven by
+ * [RecorderService]; no Expo dependencies.
  */
 class SensorRecorder(
   context: Context,
@@ -124,9 +124,12 @@ class SensorRecorder(
     runCatching { writer?.close() }
   }
 
-  /** Unsubscribes, flushes and closes the files. Safe to call more than once. */
-  fun stop(): RecorderStatus {
-    if (!markStopped()) return status()
+  /**
+   * Unsubscribes, flushes and closes the files. Safe to call more than once.
+   * [error] is the reason for an abnormal stop; it is kept only if the recording was still running.
+   */
+  fun stop(error: String? = null): RecorderStatus {
+    if (!markStopped(error)) return status()
     sensorManager.unregisterListener(this)
     val thread = thread!!
     handler!!.removeCallbacks(tick)
@@ -149,6 +152,7 @@ class SensorRecorder(
       sampleCount = stats.count,
       rateHz = stats.rateHz,
       maxIntervalMs = stats.maxIntervalNs / 1e6,
+      gapCount = stats.gapCount,
       error = error,
     )
   }
@@ -184,8 +188,9 @@ class SensorRecorder(
   }
 
   @Synchronized
-  private fun markStopped(): Boolean {
+  private fun markStopped(reason: String? = null): Boolean {
     if (state != State.RECORDING) return false
+    if (reason != null && error == null) error = reason
     val clock = ClockPair.capture()
     stopClock = clock
     stopElapsedNs = clock.elapsedRealtimeNs

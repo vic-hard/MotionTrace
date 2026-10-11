@@ -6,6 +6,8 @@ import SensorRecorder, {
   RecordingMode,
 } from "@modules/sensor-recorder";
 
+import { requestNotificationPermission } from "../lib/notificationPermission";
+
 const toMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function useRecorderScreen() {
@@ -37,7 +39,11 @@ export function useRecorderScreen() {
     recordings,
     // A failed command, or a write error reported by the recorder.
     error: commandError ?? status.error,
-    start: () => run(() => SensorRecorder.start(mode)),
+    start: () =>
+      run(async () => {
+        await requestNotificationPermission();
+        await SensorRecorder.start(mode);
+      }),
     stop: () => run(() => SensorRecorder.stop()),
     share: (id: string) => run(() => SensorRecorder.shareRecordings([id])),
     remove: (id: string) =>
