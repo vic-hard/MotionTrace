@@ -55,3 +55,12 @@ modules/*/android/local.properties
 
 # VS Code React Native Tools workspace data
 .vscode/.react/
+
+# Analysis script: virtualenv, recordings and generated plots/tables (recordings are shared separately)
+analysis/.venv/
+analysis/data/
+analysis/out/
+__pycache__/
+
+# Report plots (python analysis/analyze.py ... --plots); the report itself is exported without them
+docs/report/

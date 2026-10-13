@@ -24,6 +24,12 @@ npx expo-doctor
 # Standalone APK (no Metro), debug-signed: android/app/build/outputs/apk/release/app-release.apk
 # arm64-v8a only: building all four ABIs runs the C++ compiler out of memory on this machine
 cd android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+
+# Analysis script (Python 3.10+, own venv in analysis/.venv; data/ and out/ are gitignored)
+py -3.12 -m venv analysis/.venv && analysis/.venv/Scripts/python -m pip install -r analysis/requirements.txt
+analysis/.venv/Scripts/python analysis/analyze.py quality "analysis/data/<phone>/rate/*" -o analysis/out/<phone>/rate
+analysis/.venv/Scripts/python analysis/analyze.py compare <motiontrace.csv> <sensorlogger.zip> [...pairs] -o <out dir>
+# add --plots to either command for PNG plots (off by default)
 ```
 
 There is no test suite. Verification is done by building and running on a physical Android phone (sensor behavior can't be checked in an emulator).
@@ -36,6 +42,7 @@ There is no test suite. Verification is done by building and running on a physic
 - Use only platform SDK sensor APIs (`SensorManager`) — no third-party sensor libraries.
 - Android permissions (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_HEALTH`, `HIGH_SAMPLING_RATE_SENSORS`, `WAKE_LOCK`, `POST_NOTIFICATIONS`) and the foreground service are declared in the **module's** `android/src/main/AndroidManifest.xml`, which merges into the app manifest at build time. Foreground service type is `health`.
 - **`RecorderService` owns the recording**, not the Expo module: its companion (`start` / `stop` / `status`, status listeners) holds the process's one `SensorRecorder`, and the service (foreground + `PARTIAL_WAKE_LOCK`) runs exactly while it records, stopping itself on the final status. The module only forwards commands and subscribes to status, so a recording survives JS reloads.
+- **`analysis/analyze.py`** — standalone Python script (numpy/pandas; matplotlib only for the opt-in `--plots` PNGs): `quality` metrics per recording and `compare` of simultaneous MotionTrace / Sensor Logger recordings. Test procedure, metric definitions and results (report for the client, Russian, exported to docx/pdf, so no images): `docs/REPORT.md`.
 - Single screen. Routes in `src/app/` only re-export screens (`src/app/index.tsx` → `src/features/recorder/screens/RecorderScreen.tsx`); each screen keeps its state in a sibling hook (`useRecorderScreen.ts`). Aliases: `@/*` → `src/*`, `@modules/*` → `modules/*`.
 
 ## Project-specific rules
