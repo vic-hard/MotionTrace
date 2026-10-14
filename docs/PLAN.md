@@ -137,6 +137,7 @@
   - перезагрузка JS во время записи: запись продолжается, после Stop у неё `result` без ошибки;
   - принудительный Doze (`dumpsys battery unplug` + `dumpsys deviceidle force-idle`, экран выключен): `gapCount` = 0;
   - отказ в разрешении на уведомления (`pm revoke … POST_NOTIFICATIONS`): запись идёт, уведомления в шторке нет.
+  - 14 октября, release APK: час на 100 Hz без разрешения на уведомления, экран выключен — foreground service и WakeLock подняты (`isForeground=true`, oom adj 200), 0 разрывов, 392 193 измерения.
 
 ## Детали следующих этапов
 
